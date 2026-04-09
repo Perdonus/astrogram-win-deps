@@ -124,38 +124,6 @@ jobs:
           "SCCACHE_IGNORE_SERVER_IO_ERROR=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "CMAKE_BUILD_PARALLEL_LEVEL=$buildJobs" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Prepare dependencies (Windows)
-        id: prepare
-        if: ${{ steps.toolchain_state.outputs.ready != 'true' }}
-        shell: cmd
-        run: |
-          @echo on
-          setlocal EnableExtensions EnableDelayedExpansion
-          cd /d "%GITHUB_WORKSPACE%"
-
-          git config --global core.longpaths true
-          git config --global http.version HTTP/1.1
-          git config --global http.postBuffer 524288000
-          git config --global http.lowSpeedLimit 1000
-          git config --global http.lowSpeedTime 30
-          git config --global protocol.version 2
-
-          set "PREPARE_MAX_TRIES=1"
-          set "PREPARE_TRY=1"
-          :prepare_retry
-          echo [prepare] attempt !PREPARE_TRY! of !PREPARE_MAX_TRIES!
-          powershell -NoProfile -Command "$p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/s','/c','call Telegram\\build\\prepare\\win.bat silent incremental' -WorkingDirectory $env:GITHUB_WORKSPACE -PassThru -NoNewWindow; if (-not $p.WaitForExit(10800 * 1000)) { Write-Host '[prepare] timed out after 10800s'; try { $p.Kill($true) } catch {}; exit 124 }; exit $p.ExitCode"
-          if not errorlevel 1 goto prepare_ok
-          if !PREPARE_TRY! GEQ !PREPARE_MAX_TRIES! (
-            echo [prepare] failed after !PREPARE_TRY! attempts
-            exit /b 1
-          )
-          echo [prepare] failed, retry in 20s (transient network/proxy errors are common)
-          timeout /t 20 /nobreak >nul
-          set /a PREPARE_TRY+=1
-          goto prepare_retry
-          :prepare_ok
-
       - name: Ensure cmake submodule
         id: ensure_cmake
         shell: cmd
