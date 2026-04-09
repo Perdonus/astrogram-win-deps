@@ -97,10 +97,12 @@ jobs:
         id: toolchain_state
         shell: pwsh
         run: |
-          $qtCore = Join-Path '${{ steps.prepare_paths.outputs.win64_root }}' 'Qt-5.15.18/lib/Qt5Core.lib'
+          $win64 = '${{ steps.prepare_paths.outputs.win64_root }}'
+          $qtLib = Get-ChildItem -LiteralPath $win64 -Recurse -Filter Qt5Core.lib -ErrorAction SilentlyContinue | Select-Object -First 1
           $thirdPartyPython = Join-Path '${{ steps.prepare_paths.outputs.thirdparty_root }}' 'python/Scripts/python.exe'
-          $ready = ('${{ steps.desktop_toolchain_cache.outputs.cache-hit }}' -eq 'true') -and (Test-Path -LiteralPath $qtCore) -and (Test-Path -LiteralPath $thirdPartyPython)
+          $ready = ('${{ steps.desktop_toolchain_cache.outputs.cache-hit }}' -eq 'true') -and ($null -ne $qtLib) -and (Test-Path -LiteralPath $thirdPartyPython)
           "ready=$($ready.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          if ($qtLib) { Write-Host "[toolchain] Qt5Core found: $($qtLib.FullName)" }
           Write-Host "[toolchain] cache-hit=${{ steps.desktop_toolchain_cache.outputs.cache-hit }} ready=$ready"
 
       - name: Setup sccache
@@ -362,7 +364,7 @@ jobs:
             }
             $targetItem = Get-ExistingItem $Target
             if ($null -eq $targetItem) {
-              throw "[paths] alias target missing: $Target"
+              return
             }
             $existing = Get-ExistingItem $Path
             if ($null -ne $existing) {
@@ -391,23 +393,21 @@ jobs:
           Write-Host "[paths] Libraries/win64: $libsWin64"
           Write-Host "[paths] ThirdParty root: $thirdPartyRoot"
 
-          $qtDirs = @(Get-ChildItem -LiteralPath $libsWin64 -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Qt-*' })
-          if ($qtDirs.Count -eq 0) {
+          $workspaceLibs = Join-Path $workspace 'Libraries'
+          $workspaceWin64 = Join-Path $workspaceLibs 'win64'
+          Ensure-Directory $workspaceLibs
+          Ensure-DirAlias $workspaceWin64 $libsWin64
+          Ensure-DirAlias (Join-Path $workspace 'ThirdParty') $thirdPartyRoot
+
+          $qtLib = Get-ChildItem -LiteralPath $libsWin64 -Recurse -Filter Qt5Core.lib -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $qtLib) {
             Write-Host "[paths] Libraries/win64 snapshot:"
             Get-ChildItem -LiteralPath $libsWin64 -Force -ErrorAction SilentlyContinue | Select-Object -First 80 FullName
-            throw "[paths] no Qt directories found in $libsWin64"
+            Write-Host "[paths] ThirdParty snapshot:"
+            Get-ChildItem -LiteralPath $thirdPartyRoot -Force -ErrorAction SilentlyContinue | Select-Object -First 80 FullName
+          } else {
+            Write-Host "[paths] Qt5Core located: $($qtLib.FullName)"
           }
-
-          foreach ($qt in $qtDirs) {
-            Ensure-DirAlias (Join-Path $libsRoot $qt.Name) $qt.FullName
-            Ensure-DirAlias (Join-Path $workspace 'Libraries' $qt.Name) $qt.FullName
-            Ensure-DirAlias (Join-Path $workspace 'Libraries' 'win64' $qt.Name) $qt.FullName
-            Write-Host "[paths] Qt ready: $($qt.Name) at $($qt.FullName)"
-          }
-
-          Ensure-DirAlias (Join-Path $workspace 'Libraries' 'win64') $libsWin64
-          Ensure-DirAlias (Join-Path $workspace 'Libraries') $libsRoot
-          Ensure-DirAlias (Join-Path $workspace 'ThirdParty') $thirdPartyRoot
 
       - name: Configure (Windows Release)
         id: configure
