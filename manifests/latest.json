@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "artifacts": {
+    "libs": "astrogram-win-libs.tar.zst",
+    "thirdparty": "astrogram-win-thirdparty.tar.zst",
+    "sources": "astrogram-win-sources.tar.zst"
+  },
+  "notes": "Published from Astrogram Desktop CI/tooling."
+}
