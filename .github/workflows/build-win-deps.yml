@@ -30,7 +30,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 360
     outputs:
-      toolchain_cache_key: ${{ steps.cache_key.outputs.key }}
+      toolchain_cache_key: ${{ steps.cache_key.outputs.base_key }}
 
     steps:
       - name: Checkout
@@ -70,15 +70,19 @@ jobs:
         id: cache_key
         shell: pwsh
         run: |
-          "key=deps-toolchain-win64-v1-${{ hashFiles('Telegram/build/prepare/prepare.py', 'Telegram/build/prepare/win.bat', 'Telegram/build/qt_version.py') }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $baseKey = "deps-toolchain-win64-v2-${{ hashFiles('Telegram/build/prepare/prepare.py', 'Telegram/build/prepare/win.bat', 'Telegram/build/qt_version.py') }}"
+          $saveKey = "$baseKey-${{ github.run_id }}-${{ github.run_attempt }}"
+          "base_key=$baseKey" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "save_key=$saveKey" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Restore desktop toolchain cache
         id: desktop_toolchain_cache
         uses: actions/cache/restore@v4
         with:
-          key: ${{ steps.cache_key.outputs.key }}
+          key: ${{ steps.cache_key.outputs.base_key }}
           restore-keys: |
-            deps-toolchain-win64-v1-
+            ${{ steps.cache_key.outputs.base_key }}-
+            deps-toolchain-win64-v2-
           path: |
             ${{ steps.prepare_paths.outputs.win64_root }}
             ${{ steps.prepare_paths.outputs.libs_root }}/cache_keys
@@ -90,7 +94,7 @@ jobs:
         run: |
           $qtCore = Join-Path '${{ steps.prepare_paths.outputs.win64_root }}' 'Qt-5.15.18/lib/Qt5Core.lib'
           $thirdPartyPython = Join-Path '${{ steps.prepare_paths.outputs.thirdparty_root }}' 'python/Scripts/python.exe'
-          $ready = ('${{ steps.desktop_toolchain_cache.outputs.cache-hit }}' -eq 'true') -and (Test-Path -LiteralPath $qtCore) -and (Test-Path -LiteralPath $thirdPartyPython)
+          $ready = (Test-Path -LiteralPath $qtCore) -and (Test-Path -LiteralPath $thirdPartyPython)
           "ready=$($ready.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "[toolchain] cache-hit=${{ steps.desktop_toolchain_cache.outputs.cache-hit }} ready=$ready"
 
@@ -127,10 +131,10 @@ jobs:
           :prepare_ok
 
       - name: Save desktop toolchain cache
-        if: ${{ success() && steps.toolchain_state.outputs.ready != 'true' && steps.desktop_toolchain_cache.outputs.cache-hit != 'true' }}
+        if: ${{ always() && steps.toolchain_state.outputs.ready != 'true' && steps.prepare.outcome != 'skipped' }}
         uses: actions/cache/save@v4
         with:
-          key: ${{ steps.cache_key.outputs.key }}
+          key: ${{ steps.cache_key.outputs.save_key }}
           path: |
             ${{ steps.prepare_paths.outputs.win64_root }}
             ${{ steps.prepare_paths.outputs.libs_root }}/cache_keys
@@ -191,7 +195,8 @@ jobs:
         with:
           key: ${{ needs.prepare_toolchain.outputs.toolchain_cache_key }}
           restore-keys: |
-            deps-toolchain-win64-v1-
+            ${{ needs.prepare_toolchain.outputs.toolchain_cache_key }}-
+            deps-toolchain-win64-v2-
           path: |
             ${{ steps.prepare_paths.outputs.win64_root }}
             ${{ steps.prepare_paths.outputs.libs_root }}/cache_keys
