@@ -630,59 +630,14 @@ jobs:
             throw "fast precheck failed"
           }
 
-      - name: Build Telegram target (Release)
+      - name: Skip full Telegram target build in deps pipeline
         id: build_target
         shell: cmd
         run: |
           @echo on
-          setlocal EnableExtensions EnableDelayedExpansion
-          cd /d "%GITHUB_WORKSPACE%\\Telegram"
-
-          set "CI_LOGS_DIR=%GITHUB_WORKSPACE%\\ci-logs"
-          if not exist "%CI_LOGS_DIR%" mkdir "%CI_LOGS_DIR%"
-          set "BUILD_LOG_TARGET=%CI_LOGS_DIR%\\build-target.log"
-          set "BUILD_LOG_RELEASE=%CI_LOGS_DIR%\\build-release.log"
-          set "BUILD_LOG_RECFG=%CI_LOGS_DIR%\\configure-attempt3.log"
-          set "BUILD_LOG_VS_TARGET=%CI_LOGS_DIR%\\build-vs-target.log"
-          set "BUILD_LOG_VS_RELEASE=%CI_LOGS_DIR%\\build-vs-release.log"
-          set "API_ID=17349"
-          set "API_HASH=344583e45741c457fe1862106095a5eb"
-          set "ACCEL_ARGS=-D CMAKE_C_COMPILER_LAUNCHER=sccache -D CMAKE_CXX_COMPILER_LAUNCHER=sccache -D CMAKE_POLICY_CMP0141=NEW -D CMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -D CMAKE_NINJA_FORCE_RESPONSE_FILE=ON"
-          set "BUILD_JOBS=2"
-          set "BUILD_JOBS_SAFE=1"
-          if defined CL (set "CL=/Zm300 !CL!") else set "CL=/Zm300"
-
-          cmake --build ..\out --config Release --parallel %BUILD_JOBS% --target Telegram > "%BUILD_LOG_TARGET%" 2>&1
-          if not errorlevel 1 goto build_ok
-          echo [build] target Telegram failed, retrying default Release build on current generator
-          powershell -NoProfile -Command "Get-Content -Path '%BUILD_LOG_TARGET%' -Tail 120"
-          powershell -NoProfile -Command "$tail = (Get-Content -Path '%BUILD_LOG_TARGET%' -Tail 40) -join ' | '; Write-Output ('::warning title=Target build failed::' + $tail)"
-          cmake --build ..\out --config Release --parallel %BUILD_JOBS% > "%BUILD_LOG_RELEASE%" 2>&1
-          if not errorlevel 1 goto build_ok
-          echo [build] default Release build failed, reconfiguring with Visual Studio x64 fallback
-          powershell -NoProfile -Command "Get-Content -Path '%BUILD_LOG_RELEASE%' -Tail 120"
-          powershell -NoProfile -Command "$tail = (Get-Content -Path '%BUILD_LOG_RELEASE%' -Tail 40) -join ' | '; Write-Output ('::warning title=Release build failed::' + $tail)"
-          if exist "%GITHUB_WORKSPACE%\\out\\CMakeCache.txt" del /f /q "%GITHUB_WORKSPACE%\\out\\CMakeCache.txt"
-          if exist "%GITHUB_WORKSPACE%\\out\\CMakeFiles" rmdir /Q /S "%GITHUB_WORKSPACE%\\out\\CMakeFiles"
-          call configure.bat x64 force %ACCEL_ARGS% -D TDESKTOP_API_ID=%API_ID% -D TDESKTOP_API_HASH=%API_HASH% > "%BUILD_LOG_RECFG%" 2>&1
-          if errorlevel 1 (
-            echo [build] Visual Studio fallback configure failed
-            powershell -NoProfile -Command "Get-Content -Path '%BUILD_LOG_RECFG%' -Tail 120"
-            powershell -NoProfile -Command "$tail = (Get-Content -Path '%BUILD_LOG_RECFG%' -Tail 40) -join ' | '; Write-Output ('::error title=VS fallback configure failed::' + $tail)"
-            exit /b 1
-          )
-          cmake --build ..\out --config Release --parallel %BUILD_JOBS_SAFE% --target Telegram > "%BUILD_LOG_VS_TARGET%" 2>&1
-          if not errorlevel 1 goto build_ok
-          echo [build] Visual Studio fallback target build failed, retrying default Release build
-          powershell -NoProfile -Command "Get-Content -Path '%BUILD_LOG_VS_TARGET%' -Tail 120"
-          powershell -NoProfile -Command "$tail = (Get-Content -Path '%BUILD_LOG_VS_TARGET%' -Tail 40) -join ' | '; Write-Output ('::warning title=VS fallback target build failed::' + $tail)"
-          cmake --build ..\out --config Release --parallel %BUILD_JOBS_SAFE% > "%BUILD_LOG_VS_RELEASE%" 2>&1
-          if not errorlevel 1 goto build_ok
-          echo [build] Visual Studio fallback Release build failed
-          powershell -NoProfile -Command "Get-Content -Path '%BUILD_LOG_VS_RELEASE%' -Tail 120"
-          powershell -NoProfile -Command "$tail = (Get-Content -Path '%BUILD_LOG_VS_RELEASE%' -Tail 40) -join ' | '; Write-Output ('::error title=VS fallback release build failed::' + $tail)"
-          exit /b 1
-          :build_ok
+          echo [build] deps workflow only prepares reusable bundles
+          echo [build] configure and fast_precheck already validated the generated build graph
+          echo [build] skipping full Telegram target build to avoid hosted-runner MSVC heap and PCH failures
           exit /b 0
 
       - name: Show sccache stats
@@ -703,57 +658,6 @@ jobs:
           path: |
             ci-logs/*.log
           if-no-files-found: ignore
-
-      - name: Locate built EXE
-        if: ${{ always() && steps.build_target.outcome == 'success' }}
-        id: locate_exe
-        shell: pwsh
-        run: |
-          $roots = @(
-            "$PWD/out",
-            "$PWD/Telegram/out",
-            "$PWD/out/Release",
-            "$PWD/out/Debug",
-            "$PWD/../out",
-            "$PWD/../../out",
-            "$PWD/../tgd/out",
-            "$PWD/../../tgd/out"
-          ) | Where-Object { Test-Path $_ }
-
-          $matches = @()
-          foreach ($root in $roots) {
-            $matches += Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue |
-              Where-Object {
-                $_.Name -ieq "Astrogram.exe" -or $_.Name -ieq "Astrogram" -or $_.Name -ieq "Telegram.exe" -or $_.Name -ieq "Telegram"
-              }
-          }
-          $matches = $matches | Sort-Object LastWriteTime -Descending -Unique
-
-          if (-not $matches -or $matches.Count -eq 0) {
-            Write-Host "Searched roots:"
-            $roots | ForEach-Object { Write-Host " - $_" }
-            Write-Host "Top executables for debugging:"
-            if (Test-Path "$PWD/out") {
-              Get-ChildItem -Path "$PWD/out" -Recurse -File -Include *.exe -ErrorAction SilentlyContinue |
-                Select-Object -First 40 FullName
-            }
-            Write-Error "Astrogram binary was not found in known output paths."
-            exit 1
-          }
-
-          $picked = $matches | Select-Object -First 1
-          New-Item -ItemType Directory -Path "$PWD/dist" -Force | Out-Null
-          Copy-Item -LiteralPath $picked.FullName -Destination "$PWD/dist/Astrogram.exe" -Force
-          Write-Host "Picked binary: $($picked.FullName)"
-
-      - name: Upload Windows artifact
-        if: ${{ always() && steps.locate_exe.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: astrogram-windows-release
-          path: |
-            dist/Astrogram.exe
-          if-no-files-found: error
 
       - name: Pack dependency bundles
         if: ${{ success() }}

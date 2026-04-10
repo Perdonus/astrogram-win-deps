@@ -290,11 +290,12 @@ void SetupUpdate(
 		cSetAutoUpdate(toggled);
 
 		Local::writeSettings();
+		Core::UpdateChecker transientChecker;
 		if (cAutoUpdate()) {
-			checker.start();
+			transientChecker.start();
 		} else {
-			checker.stop();
-			setDefaultStatus(checker);
+			transientChecker.stop();
+			setDefaultStatus(transientChecker);
 		}
 	}, toggle->lifetime());
 
@@ -348,8 +349,9 @@ void SetupUpdate(
 	refreshReleaseInfo(initialReleaseInfo);
 
 	check->addClickHandler([=] {
+		Core::UpdateChecker transientChecker;
 		cSetLastUpdateCheck(0);
-		checker.start();
+		transientChecker.start();
 	});
 	update->addClickHandler([] {
 		if (!Core::UpdaterDisabled()) {
