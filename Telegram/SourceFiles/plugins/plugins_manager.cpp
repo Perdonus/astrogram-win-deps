@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "lang/lang_keys.h"
 #include "main/main_account.h"
+#include "main/main_app_config.h"
 #include "main/main_domain.h"
 #include "main/main_session.h"
 #include "apiwrap.h"
@@ -456,6 +457,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$uri = $env:BASE + '/v1/messages/send';" ^
   "try { $result = Invoke-RestMethod -Method Post -Uri $uri -TimeoutSec 20 -ContentType 'application/json' -Body $payload; $result | ConvertTo-Json -Depth 50 } catch { if ($_.Exception.Response) { $reader = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); $payload = $reader.ReadToEnd(); if ($payload) { Write-Output $payload }; exit 1 } else { Write-Error $_; exit 1 } }"
 exit /b %errorlevel%
+)BATCH");
+	script += QString::fromLatin1(R"BATCH(
 
 :plugin_enable
 if "%~1"=="" (
@@ -597,6 +600,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$payload = @{ value = $env:ASTRO_SETTING_TEXT } | ConvertTo-Json -Compress;" ^
   "try { $result = Invoke-RestMethod -Method Post -Uri $uri -TimeoutSec 20 -ContentType 'application/json' -Body $payload; $result | ConvertTo-Json -Depth 80 } catch { if ($_.Exception.Response) { $reader = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); $payload = $reader.ReadToEnd(); if ($payload) { Write-Output $payload }; exit 1 } else { Write-Error $_; exit 1 } }"
 exit /b %errorlevel%
+)BATCH");
+	script += QString::fromLatin1(R"BATCH(
 
 :safe_mode
 if "%~1"=="" (
@@ -649,6 +654,8 @@ set "ASTRO_RAW_BODY=%*"
 call :ensure_online || exit /b 1
 call :invoke %ASTRO_RAW_METHOD% "%ASTRO_RAW_ENDPOINT%" "%ASTRO_RAW_BODY%" || exit /b 1
 exit /b 0
+)BATCH");
+	script += QString::fromLatin1(R"BATCH(
 
 :detect_config
 for /f "usebackq tokens=1,* delims==" %%A in (`powershell -NoProfile -ExecutionPolicy Bypass -Command ^
